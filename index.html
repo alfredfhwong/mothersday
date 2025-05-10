@@ -55,39 +55,44 @@
             margin: 0;
             text-align: center;
             overflow: auto;
+            touch-action: manipulation;
         }
         .container {
-            max-width: 1200px;
+            max-width: 90%;
             padding: 20px;
         }
         h1 {
-            font-size: 3em;
+            font-size: 2.5em;
             margin-bottom: 10px;
             color: #e6e6fa;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
         }
         p {
-            font-size: 1.2em;
+            font-size: 1.1em;
             color: #f0e6ff;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             line-height: 1.6;
         }
         #game-board {
             display: grid;
-            grid-template-columns: repeat(3, 320px);
-            gap: 20px;
+            grid-template-columns: repeat(3, 30vw);
+            gap: 2vw;
             background-color: transparent;
-            padding: 25px;
+            padding: 3vw;
             justify-content: center;
+            max-width: 100%;
         }
         .card {
-            width: 300px;
-            height: 300px;
+            width: 28vw;
+            height: 28vw;
+            max-width: 200px;
+            max-height: 200px;
             background-color: #e6e6fa;
             border-radius: 10px;
             cursor: pointer;
             position: relative;
             transition: transform 0.3s, box-shadow 0.3s;
+            -webkit-tap-highlight-color: transparent;
         }
         .card:hover {
             transform: scale(1.05);
@@ -109,7 +114,7 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 2em;
+            font-size: 1.5em;
             color: #4b0082;
             font-weight: bold;
         }
@@ -131,45 +136,59 @@
             cursor: pointer;
         }
         #win-message img {
-            width: 800px;
-            height: auto;
+            width: 75%;
+            max-width: 600px;
+            max-height: 80vh;
             border: 8px solid #e6e6fa;
             border-radius: 15px;
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
         }
-        @media (max-width: 1000px) {
-            #game-board {
-                grid-template-columns: repeat(3, 200px);
-                padding: 15px;
-            }
-            .card {
-                width: 180px;
-                height: 180px;
-            }
-            .card:not(.flipped)::before {
-                font-size: 1.5em;
-            }
+        @media (max-width: 768px) {
             h1 {
                 font-size: 2em;
             }
             p {
                 font-size: 1em;
             }
-            #win-message img {
-                width: 80%;
-                max-width: 600px;
-            }
-        }
-        @media (max-width: 600px) {
             #game-board {
-                grid-template-columns: repeat(2, 150px);
+                grid-template-columns: repeat(3, 30vw);
+                gap: 1.5vw;
+                padding: 2vw;
             }
             .card {
-                width: 130px;
-                height: 130px;
+                width: 28vw;
+                height: 28vw;
+                max-width: 150px;
+                max-height: 150px;
             }
             .card:not(.flipped)::before {
                 font-size: 1.2em;
+            }
+        }
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.8em;
+            }
+            p {
+                font-size: 0.9em;
+            }
+            #game-board {
+                grid-template-columns: repeat(2, 45vw);
+                gap: 2vw;
+                padding: 3vw;
+            }
+            .card {
+                width: 42vw;
+                height: 42vw;
+                max-width: 120px;
+                max-height: 120px;
+            }
+            .card:not(.flipped)::before {
+                font-size: 1em;
+            }
+            #win-message img {
+                max-width: 90%;
+                max-height: 70vh;
             }
         }
     </style>
@@ -186,6 +205,9 @@
             <img src="card4.jpg" alt="Mother's Day Celebration">
         </div>
     </div>
+    <audio id="background-music" loop>
+        <source src="terrencelam.mp3" type="audio/mpeg">
+    </audio>
 
     <script>
         const cards = [
@@ -199,6 +221,12 @@
 
         let flippedCards = [];
         let matchedCards = [];
+
+        // Attempt to play background music, continue if file is missing
+        const audio = document.getElementById('background-music');
+        audio.play().catch(() => {
+            console.log('Background music failed to load or play, continuing without music.');
+        });
 
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
