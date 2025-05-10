@@ -57,7 +57,7 @@
             overflow: auto;
         }
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             padding: 20px;
         }
         h1 {
@@ -74,22 +74,19 @@
         }
         #game-board {
             display: grid;
-            grid-template-columns: repeat(3, 160px);
-            gap: 15px;
-            background-color: #4b0082;
+            grid-template-columns: repeat(3, 320px);
+            gap: 20px;
+            background-color: transparent;
             padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            justify-content: center;
         }
         .card {
-            width: 140px;
-            height: 140px;
+            width: 300px;
+            height: 300px;
             background-color: #e6e6fa;
             border-radius: 10px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            position: relative;
             transition: transform 0.3s, box-shadow 0.3s;
         }
         .card:hover {
@@ -106,6 +103,16 @@
         .card.flipped img {
             display: block;
         }
+        .card:not(.flipped)::before {
+            content: 'ABCD';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2em;
+            color: #4b0082;
+            font-weight: bold;
+        }
         .card.matched {
             opacity: 0.7;
             cursor: default;
@@ -121,22 +128,26 @@
             align-items: center;
             justify-content: center;
             z-index: 100;
+            cursor: pointer;
         }
         #win-message img {
-            width: 600px;
+            width: 800px;
             height: auto;
             border: 8px solid #e6e6fa;
             border-radius: 15px;
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
         }
-        @media (max-width: 600px) {
+        @media (max-width: 1000px) {
             #game-board {
-                grid-template-columns: repeat(3, 100px);
+                grid-template-columns: repeat(3, 200px);
                 padding: 15px;
             }
             .card {
-                width: 90px;
-                height: 90px;
+                width: 180px;
+                height: 180px;
+            }
+            .card:not(.flipped)::before {
+                font-size: 1.5em;
             }
             h1 {
                 font-size: 2em;
@@ -146,7 +157,19 @@
             }
             #win-message img {
                 width: 80%;
-                max-width: 400px;
+                max-width: 600px;
+            }
+        }
+        @media (max-width: 600px) {
+            #game-board {
+                grid-template-columns: repeat(2, 150px);
+            }
+            .card {
+                width: 130px;
+                height: 130px;
+            }
+            .card:not(.flipped)::before {
+                font-size: 1.2em;
             }
         }
     </style>
@@ -187,6 +210,7 @@
 
         function createBoard() {
             const gameBoard = document.getElementById('game-board');
+            gameBoard.innerHTML = '';
             shuffle(cards).forEach(card => {
                 const cardElement = document.createElement('div');
                 cardElement.classList.add('card');
@@ -225,8 +249,19 @@
 
         function checkWin() {
             if (matchedCards.length === cards.length) {
-                document.getElementById('win-message').style.display = 'flex';
+                const winMessage = document.getElementById('win-message');
+                winMessage.style.display = 'flex';
+                winMessage.addEventListener('click', restartGame);
             }
+        }
+
+        function restartGame() {
+            const winMessage = document.getElementById('win-message');
+            winMessage.style.display = 'none';
+            winMessage.removeEventListener('click', restartGame);
+            flippedCards = [];
+            matchedCards = [];
+            createBoard();
         }
 
         createBoard();
