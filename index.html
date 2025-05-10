@@ -1,0 +1,137 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html>
+<head>
+  <title>Mother's Day Memory Game</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; background-color: #f0e8d4; }
+    #gameArea { margin-top: 20px; }
+    .card { 
+      width: 150px; 
+      height: 200px; 
+      display: inline-block; 
+      margin: 10px; 
+      cursor: pointer; 
+      background: #ddd; 
+      border: 2px solid #333; 
+      position: relative; 
+      overflow: hidden; 
+    }
+    .card.flipped { 
+      background: #fff; 
+    }
+    .card img { 
+      width: 100%; 
+      height: 100%; 
+      object-fit: cover; 
+      display: none; 
+    }
+    .card.flipped img { 
+      display: block; 
+    }
+    #instructions { margin: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Mother's Day Memory Game</h1>
+  <p>Find matching pairs to celebrate Mom!</p>
+  <div id="instructions">Click the cards to flip them. Match all pairs to win!</div>
+  <div id="gameArea"></div>
+
+  <script>
+    const cardsArray = [
+      { id: 1, img: 'card1.jpg' }, // Replace with your image file name
+      { id: 1, img: 'card1.jpg' }, // Duplicate for matching
+      { id: 2, img: 'card2.jpg' }, // Replace with another image or crop of the original
+      { id: 2, img: 'card2.jpg' },
+      { id: 3, img: 'card3.jpg' }, // Add more unique images as needed
+      { id: 3, img: 'card3.jpg' }
+    ];
+
+    let flippedCards = [];
+    let matchedCards = [];
+    const gameArea = document.getElementById('gameArea');
+
+    // Shuffle array
+    cardsArray.sort(() => 0.5 - Math.random());
+
+    // Create cards
+    cardsArray.forEach((card, index) => {
+      const cardElement = document.createElement('div');
+      cardElement.classList.add('card');
+      cardElement.dataset.id = card.id;
+      cardElement.dataset.index = index;
+
+      const img = document.createElement('img');
+      img.src = card.img; // You need to host the image or use a local path
+      cardElement.appendChild(img);
+
+      cardElement.addEventListener('click', flipCard);
+      gameArea.appendChild(cardElement);
+    });
+
+    function flipCard() {
+      if (flippedCards.length < 2 && !this.classList.contains('flipped')) {
+        this.classList.add('flipped');
+        flippedCards.push(this);
+
+        if (flippedCards.length === 2) {
+          setTimeout(checkMatch, 1000);
+        }
+      }
+    }
+
+    function checkMatch() {
+      const [card1, card2] = flippedCards;
+      if (card1.dataset.id === card2.dataset.id) {
+        matchedCards.push(card1, card2);
+        if (matchedCards.length === cardsArray.length) {
+          document.getElementById('instructions').textContent = 'Congratulations! You won!';
+        }
+      } else {
+        card1.classList.remove('flipped');
+        card2.classList.remove('flipped');
+      }
+      flippedCards = [];
+    }
+  </script>
+</body>
+</html>
