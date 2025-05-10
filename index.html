@@ -38,100 +38,198 @@
         return gk_fileData[filename] || "";
         }
         </script><!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Mother's Day Memory Game</title>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; background-color: #f0e8d4; }
-    #gameArea { margin-top: 20px; }
-    .card { 
-      width: 150px; 
-      height: 200px; 
-      display: inline-block; 
-      margin: 10px; 
-      cursor: pointer; 
-      background: #ddd; 
-      border: 2px solid #333; 
-      position: relative; 
-      overflow: hidden; 
-    }
-    .card.flipped { 
-      background: #fff; 
-    }
-    .card img { 
-      width: 100%; 
-      height: 100%; 
-      object-fit: cover; 
-      display: none; 
-    }
-    .card.flipped img { 
-      display: block; 
-    }
-    #instructions { margin: 10px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mother's Day Memory Game</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #800080, #4b0082);
+            color: #fff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            text-align: center;
+            overflow: auto;
+        }
+        .container {
+            max-width: 800px;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            color: #e6e6fa;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        p {
+            font-size: 1.2em;
+            color: #f0e6ff;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(3, 160px);
+            gap: 15px;
+            background-color: #4b0082;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+        }
+        .card {
+            width: 140px;
+            height: 140px;
+            background-color: #e6e6fa;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .card img {
+            width: 100%;
+            height: 100%;
+            display: none;
+            border-radius: 10px;
+            object-fit: cover;
+        }
+        .card.flipped img {
+            display: block;
+        }
+        .card.matched {
+            opacity: 0.7;
+            cursor: default;
+        }
+        #win-message {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        #win-message img {
+            width: 600px;
+            height: auto;
+            border: 8px solid #e6e6fa;
+            border-radius: 15px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+        }
+        @media (max-width: 600px) {
+            #game-board {
+                grid-template-columns: repeat(3, 100px);
+                padding: 15px;
+            }
+            .card {
+                width: 90px;
+                height: 90px;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            p {
+                font-size: 1em;
+            }
+            #win-message img {
+                width: 80%;
+                max-width: 400px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>Mother's Day Memory Game</h1>
-  <p>Find matching pairs to celebrate Mom!</p>
-  <div id="instructions">Click the cards to flip them. Match all pairs to win!</div>
-  <div id="gameArea"></div>
+    <div class="container">
+        <h1>Designed for our SUPER Mom Becky</h1>
+        <p>
+            Celebrate Mother's Day with this fun memory game! Flip the cards to find matching pairs of special moments. 
+            Match all pairs to reveal a heartfelt surprise for our amazing mom, Becky! 
+        </p>
+        <div id="game-board"></div>
+        <div id="win-message">
+            <img src="card4.jpg" alt="Mother's Day Celebration">
+        </div>
+    </div>
 
-  <script>
-    const cardsArray = [
-      { id: 1, img: 'card1.png' }, // Replace with your image file name
-      { id: 1, img: 'card1.png' }, // Duplicate for matching
-      { id: 2, img: 'card2.png' }, // Replace with another image or crop of the original
-      { id: 2, img: 'card2.png' },
-      { id: 3, img: 'card3.png' }, // Add more unique images as needed
-      { id: 3, img: 'card3.png' }
-    ];
+    <script>
+        const cards = [
+            { id: 1, image: 'card1.jpg' },
+            { id: 1, image: 'card1.jpg' },
+            { id: 2, image: 'card2.jpg' },
+            { id: 2, image: 'card2.jpg' },
+            { id: 3, image: 'card3.jpg' },
+            { id: 3, image: 'card3.jpg' }
+        ];
 
-    let flippedCards = [];
-    let matchedCards = [];
-    const gameArea = document.getElementById('gameArea');
+        let flippedCards = [];
+        let matchedCards = [];
 
-    // Shuffle array
-    cardsArray.sort(() => 0.5 - Math.random());
-
-    // Create cards
-    cardsArray.forEach((card, index) => {
-      const cardElement = document.createElement('div');
-      cardElement.classList.add('card');
-      cardElement.dataset.id = card.id;
-      cardElement.dataset.index = index;
-
-      const img = document.createElement('img');
-      img.src = card.img; // You need to host the image or use a local path
-      cardElement.appendChild(img);
-
-      cardElement.addEventListener('click', flipCard);
-      gameArea.appendChild(cardElement);
-    });
-
-    function flipCard() {
-      if (flippedCards.length < 2 && !this.classList.contains('flipped')) {
-        this.classList.add('flipped');
-        flippedCards.push(this);
-
-        if (flippedCards.length === 2) {
-          setTimeout(checkMatch, 1000);
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
         }
-      }
-    }
 
-    function checkMatch() {
-      const [card1, card2] = flippedCards;
-      if (card1.dataset.id === card2.dataset.id) {
-        matchedCards.push(card1, card2);
-        if (matchedCards.length === cardsArray.length) {
-          document.getElementById('instructions').textContent = 'Congratulations! You won!';
+        function createBoard() {
+            const gameBoard = document.getElementById('game-board');
+            shuffle(cards).forEach(card => {
+                const cardElement = document.createElement('div');
+                cardElement.classList.add('card');
+                cardElement.dataset.id = card.id;
+                const img = document.createElement('img');
+                img.src = card.image;
+                cardElement.appendChild(img);
+                cardElement.addEventListener('click', () => flipCard(cardElement, card));
+                gameBoard.appendChild(cardElement);
+            });
         }
-      } else {
-        card1.classList.remove('flipped');
-        card2.classList.remove('flipped');
-      }
-      flippedCards = [];
-    }
-  </script>
+
+        function flipCard(cardElement, card) {
+            if (flippedCards.length < 2 && !flippedCards.includes(cardElement) && !matchedCards.includes(cardElement)) {
+                cardElement.classList.add('flipped');
+                flippedCards.push(cardElement);
+
+                if (flippedCards.length === 2) {
+                    const [firstCard, secondCard] = flippedCards;
+                    if (firstCard.dataset.id === secondCard.dataset.id) {
+                        firstCard.classList.add('matched');
+                        secondCard.classList.add('matched');
+                        matchedCards.push(firstCard, secondCard);
+                        flippedCards = [];
+                        checkWin();
+                    } else {
+                        setTimeout(() => {
+                            firstCard.classList.remove('flipped');
+                            secondCard.classList.remove('flipped');
+                            flippedCards = [];
+                        }, 1000);
+                    }
+                }
+            }
+        }
+
+        function checkWin() {
+            if (matchedCards.length === cards.length) {
+                document.getElementById('win-message').style.display = 'flex';
+            }
+        }
+
+        createBoard();
+    </script>
 </body>
 </html>
