@@ -1,0 +1,1070 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Platformer Game</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        canvas {
+            border: 2px solid #333;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: linear-gradient(to bottom, #4B0082, #87CEEB);
+            font-family: 'Press Start 2P', cursive;
+            margin: 0;
+            height: 100vh;
+            justify-content: center;
+        }
+        #score, #stage {
+            font-size: 20px;
+            color: #FFD700;
+            text-shadow: 2px 2px 4px #000;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0</div>
+    <div id="stage">Stage: 1/10</div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const stageDisplay = document.getElementById('stage');
+
+        // Player properties
+        const player = {
+            x: 50,
+            y: 500,
+            width: 40,
+            height: 40,
+            baseSpeed: 5,
+            speed: 5,
+            velocityY: 0,
+            jumpPower: -15,
+            gravity: 0.6,
+            isJumping: false,
+            jumpCount: 0,
+            frame: 0,
+            frameCounter: 0,
+            speedBoostActive: false,
+            speedBoostTimer: 0,
+            invincibilityActive: false,
+            invincibilityTimer: 0
+        };
+
+        // Particle systems
+        let coinParticles = [];
+        let portalParticles = [];
+
+        function createCoinParticles(x, y) {
+            for (let i = 0; i < 10; i++) {
+                coinParticles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    life: 30,
+                    radius: Math.random() * 3 + 1
+                });
+            }
+        }
+
+        function createPortalParticles(x, y) {
+            portalParticles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 2,
+                vy: (Math.random() - 0.5) * 2,
+                life: 60,
+                radius: Math.random() * 2 + 1
+            });
+        }
+
+        // Cloud system
+        let clouds = [
+            { x: 100, y: 50, size: 40, speed: 0.5 },
+            { x: 400, y: 80, size: 50, speed: 0.3 },
+            { x: 700, y: 60, size: 30, speed: 0.4 }
+        ];
+
+        // Power-up types with metallic fill and neon outline colors
+        const powerUpTypes = [
+            { 
+                type: 'speed', 
+                color: '#4682B4', // Metallic blue
+                outlineColor: '#00FFFF', // Neon cyan
+                effect: () => {
+                    player.speedBoostActive = true;
+                    player.speedBoostTimer = 300; // 5 seconds at 60 FPS
+                    player.speed = player.baseSpeed * 1.5;
+                }
+            },
+            { 
+                type: 'invincibility', 
+                color: '#2E8B57', // Metallic green
+                outlineColor: '#00FF00', // Neon lime
+                effect: () => {
+                    player.invincibilityActive = true;
+                    player.invincibilityTimer = 300; // 5 seconds at 60 FPS
+                }
+            },
+            { 
+                type: 'points', 
+                color: '#6A5ACD', // Metallic purple
+                outlineColor: '#FF00FF', // Neon magenta
+                effect: () => {
+                    score += 50;
+                    scoreDisplay.textContent = `Score: ${score}`;
+                }
+            }
+        ];
+
+        // Stages configuration with adjusted coin and spike positions
+        const stages = [
+            // Stage 1: Easy
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 200, height: 50 },
+                    { x: 300, y: 450, width: 200, height: 50 },
+                    { x: 500, y: 350, width: 200, height: 50 }
+                ],
+                coins: [
+                    { x: 400, y: 400, radius: 10, collected: false }, // Moved from 350,400
+                    { x: 600, y: 300, radius: 10, collected: false }, // Moved from 550,300
+                    { x: 150, y: 500, radius: 10, collected: false }  // Moved from 100,500
+                ],
+                staticObstacles: [
+                    { x: 280, y: 430, width: 20, height: 20 } // Moved from 320,430
+                ],
+                powerUps: [],
+                portal: { x: 650, y: 300, width: 50, height: 50, active: false }
+            },
+            // Stage 2: Easy
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 180, height: 50 },
+                    { x: 250, y: 450, width: 180, height: 50 },
+                    { x: 450, y: 350, width: 180, height: 50 }
+                ],
+                coins: [
+                    { x: 350, y: 400, radius: 10, collected: false }, // Moved from 300,400
+                    { x: 550, y: 300, radius: 10, collected: false }, // Moved from 500,300
+                    { x: 150, y: 500, radius: 10, collected: false }  // Moved from 100,500
+                ],
+                staticObstacles: [
+                    { x: 230, y: 430, width: 20, height: 20 }, // Moved from 280,430
+                    { x: 400, y: 330, width: 20, height: 20 }  // Moved from 480,330
+                ],
+                powerUps: [],
+                portal: { x: 550, y: 300, width: 50, height: 50, active: false }
+            },
+            // Stage 3: Easy
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 160, height: 50 },
+                    { x: 200, y: 450, width: 160, height: 50 },
+                    { x: 400, y: 350, width: 160, height: 50 },
+                    { x: 600, y: 300, width: 160, height: 50 }
+                ],
+                coins: [
+                    { x: 300, y: 400, radius: 10, collected: false }, // Moved from 250,400
+                    { x: 500, y: 300, radius: 10, collected: false }, // Moved from 450,300
+                    { x: 700, y: 250, radius: 10, collected: false }  // Moved from 650,250
+                ],
+                staticObstacles: [
+                    { x: 180, y: 430, width: 20, height: 20 }, // Moved from 230,430
+                    { x: 360, y: 330, width: 20, height: 20 }, // Moved from 430,330
+                    { x: 560, y: 280, width: 20, height: 20 }  // Moved from 620,280
+                ],
+                powerUps: [],
+                portal: { x: 700, y: 250, width: 50, height: 50, active: false }
+            },
+            // Stage 4: Medium
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 140, height: 50 },
+                    { x: 200, y: 450, width: 140, height: 50 },
+                    { x: 400, y: 350, width: 140, height: 50 },
+                    { x: 600, y: 300, width: 140, height: 50 }
+                ],
+                coins: [
+                    { x: 300, y: 400, radius: 10, collected: false }, // Moved from 250,400
+                    { x: 500, y: 300, radius: 10, collected: false }, // Moved from 450,300
+                    { x: 700, y: 250, radius: 10, collected: false }, // Moved from 650,250
+                    { x: 150, y: 500, radius: 10, collected: false }  // Moved from 100,500
+                ],
+                staticObstacles: [
+                    { x: 180, y: 430, width: 20, height: 20 }, // Moved from 220,430
+                    { x: 360, y: 330, width: 20, height: 20 }, // Moved from 420,330
+                    { x: 560, y: 280, width: 20, height: 20 }, // Moved from 620,280
+                    { x: 200, y: 430, width: 20, height: 20 }  // Moved from 240,430
+                ],
+                powerUps: [],
+                portal: { x: 650, y: 250, width: 50, height: 50, active: false }
+            },
+            // Stage 5: Medium
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 120, height: 50 },
+                    { x: 180, y: 450, width: 120, height: 50 },
+                    { x: 360, y: 350, width: 120, height: 50 },
+                    { x: 540, y: 300, width: 120, height: 50 }
+                ],
+                coins: [
+                    { x: 280, y: 400, radius: 10, collected: false }, // Moved from 230,400
+                    { x: 460, y: 300, radius: 10, collected: false }, // Moved from 410,300
+                    { x: 640, y: 250, radius: 10, collected: false }, // Moved from 590,250
+                    { x: 100, y: 500, radius: 10, collected: false }  // Moved from 50,500
+                ],
+                staticObstacles: [
+                    { x: 150, y: 430, width: 20, height: 20 }, // Moved from 200,430
+                    { x: 320, y: 330, width: 20, height: 20 }, // Moved from 380,330
+                    { x: 500, y: 280, width: 20, height: 20 }, // Moved from 560,280
+                    { x: 170, y: 430, width: 20, height: 20 }, // Moved from 220,430
+                    { x: 520, y: 280, width: 20, height: 20 }  // Moved from 580,280
+                ],
+                powerUps: [],
+                portal: { x: 600, y: 250, width: 50, height: 50, active: false }
+            },
+            // Stage 6: Medium
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 100, height: 50 },
+                    { x: 180, y: 450, width: 100, height: 50 },
+                    { x: 360, y: 350, width: 100, height: 50 },
+                    { x: 540, y: 300, width: 100, height: 50 }
+                ],
+                coins: [
+                    { x: 280, y: 400, radius: 10, collected: false }, // Moved from 230,400
+                    { x: 460, y: 300, radius: 10, collected: false }, // Moved from 410,300
+                    { x: 640, y: 250, radius: 10, collected: false }, // Moved from 590,250
+                    { x: 100, y: 500, radius: 10, collected: false }  // Moved from 50,500
+                ],
+                staticObstacles: [
+                    { x: 150, y: 430, width: 20, height: 20 }, // Moved from 200,430
+                    { x: 320, y: 330, width: 20, height: 20 }, // Moved from 380,330
+                    { x: 500, y: 280, width: 20, height: 20 }, // Moved from 560,280
+                    { x: 170, y: 430, width: 20, height: 20 }, // Moved from 220,430
+                    { x: 520, y: 280, width: 20, height: 20 }  // Moved from 580,280
+                ],
+                powerUps: [],
+                portal: { x: 590, y: 250, width: 50, height: 50, active: false }
+            },
+            // Stage 7: Hard
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 90, height: 50 },
+                    { x: 180, y: 450, width: 90, height: 50 },
+                    { x: 360, y: 350, width: 90, height: 50 },
+                    { x: 540, y: 300, width: 90, height: 50 },
+                    { x: 360, y: 200, width: 90, height: 50 }
+                ],
+                coins: [
+                    { x: 280, y: 400, radius: 10, collected: false }, // Moved from 230,400
+                    { x: 460, y: 300, radius: 10, collected: false }, // Moved from 410,300
+                    { x: 640, y: 250, radius: 10, collected: false }, // Moved from 590,250
+                    { x: 460, y: 150, radius: 10, collected: false }  // Moved from 410,150
+                ],
+                staticObstacles: [
+                    { x: 150, y: 430, width: 20, height: 20 }, // Moved from 200,430
+                    { x: 320, y: 330, width: 20, height: 20 }, // Moved from 380,330
+                    { x: 500, y: 280, width: 20, height: 20 }, // Moved from 560,280
+                    { x: 170, y: 430, width: 20, height: 20 }, // Moved from 220,430
+                    { x: 520, y: 280, width: 20, height: 20 }, // Moved from 580,280
+                    { x: 320, y: 180, width: 20, height: 20 }  // Moved from 380,180
+                ],
+                powerUps: [],
+                portal: { x: 410, y: 150, width: 50, height: 50, active: false }
+            },
+            // Stage 8: Hard
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 80, height: 50 },
+                    { x: 180, y: 450, width: 80, height: 50 },
+                    { x: 360, y: 350, width: 80, height: 50 },
+                    { x: 540, y: 300, width: 80, height: 50 },
+                    { x: 360, y: 200, width: 80, height: 50 }
+                ],
+                coins: [
+                    { x: 280, y: 400, radius: 10, collected: false }, // Moved from 230,400
+                    { x: 460, y: 300, radius: 10, collected: false }, // Moved from 410,300
+                    { x: 640, y: 250, radius: 10, collected: false }, // Moved from 590,250
+                    { x: 460, y: 150, radius: 10, collected: false }, // Moved from 410,150
+                    { x: 100, y: 500, radius: 10, collected: false }  // Moved from 50,500
+                ],
+                staticObstacles: [
+                    { x: 150, y: 430, width: 20, height: 20 }, // Moved from 200,430
+                    { x: 320, y: 330, width: 20, height: 20 }, // Moved from 380,330
+                    { x: 500, y: 280, width: 20, height: 20 }, // Moved from 560,280
+                    { x: 170, y: 430, width: 20, height: 20 }, // Moved from 220,430
+                    { x: 520, y: 280, width: 20, height: 20 }, // Moved from 580,280
+                    { x: 320, y: 180, width: 20, height: 20 }, // Moved from 380,180
+                    { x: 340, y: 180, width: 20, height: 20 }  // Moved from 400,180
+                ],
+                powerUps: [],
+                portal: { x: 390, y: 150, width: 50, height: 50, active: false }
+            },
+            // Stage 9: Hard
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 80, height: 50 },
+                    { x: 180, y: 450, width: 80, height: 50 },
+                    { x: 360, y: 350, width: 80, height: 50 },
+                    { x: 540, y: 300, width: 80, height: 50 },
+                    { x: 360, y: 200, width: 80, height: 50 },
+                    { x: 540, y: 150, width: 80, height: 50 }
+                ],
+                coins: [
+                    { x: 280, y: 400, radius: 10, collected: false }, // Moved from 230,400
+                    { x: 460, y: 300, radius: 10, collected: false }, // Moved from 410,300
+                    { x: 640, y: 250, radius: 10, collected: false }, // Moved from 590,250
+                    { x: 460, y: 150, radius: 10, collected: false }, // Moved from 410,150
+                    { x: 640, y: 100, radius: 10, collected: false }  // Moved from 590,100
+                ],
+                staticObstacles: [
+                    { x: 150, y: 430, width: 20, height: 20 }, // Moved from 200,430
+                    { x: 320, y: 330, width: 20, height: 20 }, // Moved from 380,330
+                    { x: 500, y: 280, width: 20, height: 20 }, // Moved from 560,280
+                    { x: 170, y: 430, width: 20, height: 20 }, // Moved from 220,430
+                    { x: 520, y: 280, width: 20, height: 20 }, // Moved from 580,280
+                    { x: 320, y: 180, width: 20, height: 20 }, // Moved from 380,180
+                    { x: 500, y: 130, width: 20, height: 20 }  // Moved from 560,130
+                ],
+                powerUps: [],
+                portal: { x: 570, y: 100, width: 50, height: 50, active: false }
+            },
+            // Stage 10: Extreme
+            {
+                platforms: [
+                    { x: 0, y: 550, width: 70, height: 50 },
+                    { x: 180, y: 450, width: 70, height: 50 },
+                    { x: 360, y: 350, width: 70, height: 50 },
+                    { x: 540, y: 300, width: 70, height: 50 },
+                    { x: 360, y: 200, width: 70, height: 50 },
+                    { x: 540, y: 150, width: 70, height: 50 }
+                ],
+                coins: [
+                    { x: 280, y: 400, radius: 10, collected: false }, // Moved from 230,400
+                    { x: 460, y: 300, radius: 10, collected: false }, // Moved from 410,300
+                    { x: 640, y: 250, radius: 10, collected: false }, // Moved from 590,250
+                    { x: 460, y: 150, radius: 10, collected: false }, // Moved from 410,150
+                    { x: 640, y: 100, radius: 10, collected: false }, // Moved from 590,100
+                    { x: 100, y: 500, radius: 10, collected: false }  // Moved from 50,500
+                ],
+                staticObstacles: [
+                    { x: 150, y: 430, width: 20, height: 20 }, // Moved from 200,430
+                    { x: 320, y: 330, width: 20, height: 20 }, // Moved from 380,330
+                    { x: 500, y: 280, width: 20, height: 20 }, // Moved from 560,280
+                    { x: 170, y: 430, width: 20, height: 20 }, // Moved from 220,430
+                    { x: 520, y: 280, width: 20, height: 20 }, // Moved from 580,280
+                    { x: 320, y: 180, width: 20, height: 20 }, // Moved from 380,180
+                    { x: 500, y: 130, width: 20, height: 20 }, // Moved from 560,130
+                    { x: 340, y: 180, width: 20, height: 20 }  // Moved from 400,180
+                ],
+                powerUps: [],
+                portal: { x: 570, y: 100, width: 50, height: 50, active: false }
+            }
+        ];
+
+        let currentStage = 0;
+        let score = 0;
+        let keys = { left: false, right: false, jump: false };
+        let portalAnimationFrame = 0;
+        let backgroundOffset = 0;
+        let powerUpSpawnTimer = 0;
+
+        // Reset game function
+        function resetGame() {
+            currentStage = 0;
+            player.x = 50;
+            player.y = 500;
+            player.velocityY = 0;
+            player.isJumping = false;
+            player.jumpCount = 0;
+            player.speed = player.baseSpeed;
+            player.speedBoostActive = false;
+            player.speedBoostTimer = 0;
+            player.invincibilityActive = false;
+            player.invincibilityTimer = 0;
+            score = 0;
+            scoreDisplay.textContent = `Score: ${score}`;
+            stageDisplay.textContent = `Stage: ${currentStage + 1}/10`;
+            stages.forEach(stage => {
+                stage.coins.forEach(coin => coin.collected = false);
+                stage.powerUps = [];
+                stage.portal.active = false;
+            });
+            powerUpSpawnTimer = 0;
+        }
+
+        // Spawn power-up
+        function spawnPowerUp() {
+            const stage = stages[currentStage];
+            const platform = stage.platforms[Math.floor(Math.random() * stage.platforms.length)];
+            const powerUpType = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+            stage.powerUps.push({
+                x: platform.x + Math.random() * (platform.width - 20),
+                y: platform.y - 20,
+                width: 20,
+                height: 20,
+                type: powerUpType.type,
+                color: powerUpType.color,
+                outlineColor: powerUpType.outlineColor,
+                spawnTime: Date.now()
+            });
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'ArrowRight') keys.right = true;
+            if (e.code === 'Space' && player.jumpCount < 2) {
+                keys.jump = true;
+                player.velocityY = player.jumpPower;
+                player.isJumping = true;
+                player.jumpCount++;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'ArrowRight') keys.right = false;
+            if (e.code === 'Space') keys.jump = false;
+        });
+
+        // Collision detection
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // Update game state
+        function update() {
+            // Apply gravity
+            player.velocityY += player.gravity;
+            let proposedY = player.y + player.velocityY;
+
+            // Horizontal movement with wall collision
+            let proposedX = player.x;
+            if (keys.left) proposedX -= player.speed;
+            if (keys.right) proposedX += player.speed;
+
+            // Wall collision
+            if (proposedX < 0) proposedX = 0;
+            if (proposedX > canvas.width - player.width) proposedX = canvas.width - player.width;
+
+            // Platform collision
+            player.isJumping = true;
+            for (let platform of stages[currentStage].platforms) {
+                if (checkCollision({ x: proposedX, y: proposedY, width: player.width, height: player.height }, platform) && player.velocityY > 0 && player.y + player.height - player.velocityY <= platform.y) {
+                    proposedY = platform.y - player.height;
+                    player.velocityY = 0;
+                    player.isJumping = false;
+                    player.jumpCount = 0; // Reset jump count on landing
+                }
+            }
+
+            // Update player position
+            player.x = proposedX;
+            player.y = proposedY;
+
+            // Deadly ground collision
+            if (player.y > canvas.height - player.height) {
+                resetGame();
+                return true;
+            }
+
+            // Static obstacle collision
+            if (!player.invincibilityActive) {
+                for (let obstacle of stages[currentStage].staticObstacles) {
+                    if (checkCollision(player, obstacle)) {
+                        resetGame();
+                        return true;
+                    }
+                }
+            }
+
+            // Update animation
+            if (keys.left || keys.right) {
+                player.frameCounter++;
+                if (player.frameCounter > 6) {
+                    player.frame = (player.frame + 1) % 4;
+                    player.frameCounter = 0;
+                }
+            } else if (player.isJumping) {
+                player.frame = 4; // Jump frame
+            } else {
+                player.frame = 0;
+            }
+
+            // Coin collection
+            let allCoinsCollected = true;
+            for (let coin of stages[currentStage].coins) {
+                if (!coin.collected) {
+                    allCoinsCollected = false;
+                    const dx = player.x + player.width / 2 - coin.x;
+                    const dy = player.y + player.height / 2 - coin.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < player.width / 2 + coin.radius) {
+                        coin.collected = true;
+                        score += 10;
+                        scoreDisplay.textContent = `Score: ${score}`;
+                        createCoinParticles(coin.x, coin.y);
+                    }
+                }
+            }
+
+            // Power-up collection
+            const powerUps = stages[currentStage].powerUps;
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                const powerUp = powerUps[i];
+                if (checkCollision(player, powerUp)) {
+                    const powerUpConfig = powerUpTypes.find(p => p.type === powerUp.type);
+                    powerUpConfig.effect();
+                    powerUps.splice(i, 1);
+                } else if (Date.now() - powerUp.spawnTime > 10000) { // Despawn after 10 seconds
+                    powerUps.splice(i, 1);
+                }
+            }
+
+            // Power-up spawning
+            powerUpSpawnTimer++;
+            if (powerUpSpawnTimer >= Math.random() * 300 + 300) { // 5-10 seconds
+                spawnPowerUp();
+                powerUpSpawnTimer = 0;
+            }
+
+            // Update power-up timers
+            if (player.speedBoostActive) {
+                player.speedBoostTimer--;
+                if (player.speedBoostTimer <= 0) {
+                    player.speedBoostActive = false;
+                    player.speed = player.baseSpeed;
+                }
+            }
+            if (player.invincibilityActive) {
+                player.invincibilityTimer--;
+                if (player.invincibilityTimer <= 0) {
+                    player.invincibilityActive = false;
+                }
+            }
+
+            // Portal activation
+            stages[currentStage].portal.active = allCoinsCollected;
+
+            // Portal collision
+            if (stages[currentStage].portal.active && checkCollision(player, stages[currentStage].portal)) {
+                if (currentStage < stages.length - 1) {
+                    currentStage++;
+                    player.x = 50;
+                    player.y = 500;
+                    player.velocityY = 0;
+                    player.isJumping = false;
+                    player.jumpCount = 0;
+                    player.speed = player.baseSpeed;
+                    player.speedBoostActive = false;
+                    player.speedBoostTimer = 0;
+                    player.invincibilityActive = false;
+                    player.invincibilityTimer = 0;
+                    stageDisplay.textContent = `Stage: ${currentStage + 1}/10`;
+                } else {
+                    scoreDisplay.textContent = `Game Complete! Final Score: ${score}`;
+                    stageDisplay.textContent = `Stage: 10/10`;
+                    return false;
+                }
+            }
+
+            // Update particles
+            coinParticles = coinParticles.filter(p => p.life > 0);
+            for (let p of coinParticles) {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+            }
+            portalParticles = portalParticles.filter(p => p.life > 0);
+            for (let p of portalParticles) {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+            }
+
+            // Update clouds
+            clouds.forEach(cloud => {
+                cloud.x += cloud.speed;
+                if (cloud.x > canvas.width + cloud.size) cloud.x = -cloud.size;
+            });
+
+            // Update background and portal animation
+            backgroundOffset = (backgroundOffset + 0.2) % canvas.width;
+            portalAnimationFrame = (portalAnimationFrame + 1) % 60;
+
+            return true;
+        }
+
+        // Render game
+        function draw() {
+            // Gradient sky
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGradient.addColorStop(0, '#4B0082');
+            skyGradient.addColorStop(1, '#87CEEB');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Parallax mountains
+            ctx.fillStyle = '#2F4F4F';
+            ctx.beginPath();
+            ctx.moveTo(-backgroundOffset, canvas.height);
+            for (let x = -backgroundOffset; x < canvas.width * 2; x += 100) {
+                ctx.lineTo(x + 50, canvas.height - 100 - Math.sin(x / 200) * 50);
+            }
+            ctx.lineTo(canvas.width * 2 - backgroundOffset, canvas.height);
+            ctx.fill();
+            ctx.fillStyle = '#4682B4';
+            ctx.beginPath();
+            ctx.moveTo(-backgroundOffset / 2, canvas.height);
+            for (let x = -backgroundOffset / 2; x < canvas.width * 2; x += 100) {
+                ctx.lineTo(x + 50, canvas.height - 50 - Math.sin(x / 300) * 30);
+            }
+            ctx.lineTo(canvas.width * 2 - backgroundOffset / 2, canvas.height);
+            ctx.fill();
+
+            // Draw clouds
+            clouds.forEach(cloud => {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.beginPath();
+                ctx.arc(cloud.x, cloud.y, cloud.size, 0, Math.PI * 2);
+                ctx.arc(cloud.x + cloud.size * 0.7, cloud.y, cloud.size * 1.2, 0, Math.PI * 2);
+                ctx.arc(cloud.x + cloud.size * 1.4, cloud.y, cloud.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw platforms
+            for (let platform of stages[currentStage].platforms) {
+                ctx.fillStyle = '#4A3721';
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                ctx.fillStyle = '#228B22';
+                ctx.fillRect(platform.x, platform.y - 5, platform.width, 5);
+                ctx.strokeStyle = '#2F4F4F';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(platform.x, platform.y - 5, platform.width, platform.height + 5);
+            }
+
+            // Draw static obstacles (enhanced futuristic blades)
+            for (let obstacle of stages[currentStage].staticObstacles) {
+                ctx.save();
+                ctx.translate(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
+                ctx.fillStyle = '#C0C0C0'; // Metallic silver
+                ctx.strokeStyle = '#FF4040'; // Neon red
+                ctx.lineWidth = 1;
+                ctx.shadowBlur = 8 + Math.sin(portalAnimationFrame / 10) * 4;
+                ctx.shadowColor = '#FF4040';
+                // Draw three blades
+                for (let i = 0; i < 3; i++) {
+                    ctx.save();
+                    ctx.rotate((i * 120 * Math.PI) / 180);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(-3, 8);
+                    ctx.lineTo(3, 8);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+
+            // Draw power-ups with artificial, tech-inspired shapes
+            for (let powerUp of stages[currentStage].powerUps) {
+                ctx.save();
+                // Pulsating effect
+                const scale = 1 + Math.sin(portalAnimationFrame / 10) * 0.1; // Scale between 0.9 and 1.1
+                ctx.translate(powerUp.x + powerUp.width / 2, powerUp.y + powerUp.height / 2);
+                ctx.scale(scale, scale);
+                ctx.translate(-powerUp.width / 2, -powerUp.height / 2);
+
+                ctx.fillStyle = powerUp.color;
+                ctx.strokeStyle = powerUp.outlineColor;
+                ctx.lineWidth = 2;
+
+                // Glowing effect
+                ctx.shadowBlur = 10 + Math.sin(portalAnimationFrame / 10) * 5;
+                ctx.shadowColor = powerUp.outlineColor;
+
+                if (powerUp.type === 'speed') {
+                    // Draw circuit chip
+                    ctx.beginPath();
+                    ctx.rect(2, 2, 16, 16); // Chip body
+                    ctx.fill();
+                    ctx.stroke();
+                    // Circuit lines
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(5, 5);
+                    ctx.lineTo(10, 5);
+                    ctx.lineTo(10, 10);
+                    ctx.lineTo(15, 10);
+                    ctx.moveTo(5, 15);
+                    ctx.lineTo(15, 15);
+                    ctx.stroke();
+                } else if (powerUp.type === 'invincibility') {
+                    // Draw hexagonal force field
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (Math.PI * 2 * i) / 6;
+                        ctx.lineTo(
+                            10 + Math.cos(angle) * 9,
+                            10 + Math.sin(angle) * 9
+                        );
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    // Grid pattern
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(10, 1);
+                    ctx.lineTo(10, 19);
+                    ctx.moveTo(1, 10);
+                    ctx.lineTo(19, 10);
+                    ctx.stroke();
+                } else if (powerUp.type === 'points') {
+                    // Draw digital cube
+                    ctx.beginPath();
+                    ctx.moveTo(5, 5);
+                    ctx.lineTo(15, 5);
+                    ctx.lineTo(15, 15);
+                    ctx.lineTo(5, 15);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    // Pseudo-3D effect
+                    ctx.beginPath();
+                    ctx.moveTo(15, 5);
+                    ctx.lineTo(18, 2);
+                    ctx.lineTo(18, 12);
+                    ctx.lineTo(15, 15);
+                    ctx.moveTo(5, 15);
+                    ctx.lineTo(2, 12);
+                    ctx.lineTo(2, 2);
+                    ctx.lineTo(5, 5);
+                    ctx.stroke();
+                    // Pixelated facets
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(7, 7, 2, 2);
+                    ctx.fillRect(11, 11, 2, 2);
+                }
+
+                // Reset shadow
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+
+            // Draw player (enhanced sprite)
+            ctx.save();
+            if (keys.left) ctx.scale(-1, 1);
+            const offsetX = keys.left ? -player.x - player.width : player.x;
+
+            // Power-up glow effect
+            if (player.speedBoostActive || player.invincibilityActive) {
+                const glowColor = player.speedBoostActive ? 'rgba(0, 0, 255, 0.3)' : 'rgba(0, 255, 0, 0.3)';
+                const glowGradient = ctx.createRadialGradient(
+                    offsetX + 20, player.y + 20, 0,
+                    offsetX + 20, player.y + 20, 30
+                );
+                glowGradient.addColorStop(0, glowColor);
+                glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = glowGradient;
+                ctx.beginPath();
+                ctx.arc(offsetX + 20, player.y + 20, 30, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Base glow effect
+            const glowGradient = ctx.createRadialGradient(
+                offsetX + 20, player.y + 20, 0,
+                offsetX + 20, player.y + 20, 30
+            );
+            glowGradient.addColorStop(0, 'rgba(255, 99, 71, 0.3)');
+            glowGradient.addColorStop(1, 'rgba(255, 99, 71, 0)');
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(offsetX + 20, player.y + 20, 30, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Head
+            ctx.fillStyle = '#FFE4C4';
+            ctx.fillRect(offsetX + 10, player.y + 5, 20, 20);
+            // Eyes
+            ctx.fillStyle = '#000';
+            ctx.fillRect(offsetX + 15, player.y + 10, 3, 3);
+            ctx.fillRect(offsetX + 22, player.y + 10, 3, 3);
+            // Mouth (smile when not jumping)
+            if (!player.isJumping) {
+                ctx.beginPath();
+                ctx.arc(offsetX + 20, player.y + 15, 3, 0, Math.PI);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // Body
+            ctx.fillStyle = '#4682B4';
+            ctx.fillRect(offsetX + 5, player.y + 25, 30, 15);
+
+            // Cape
+            ctx.fillStyle = '#FF0000';
+            if (player.frame === 0 || player.frame === 2 || player.isJumping) {
+                ctx.beginPath();
+                ctx.moveTo(offsetX + 5, player.y + 25);
+                ctx.lineTo(offsetX - 10, player.y + 30);
+                ctx.lineTo(offsetX + 5, player.y + 40);
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(offsetX + 5, player.y + 25);
+                ctx.lineTo(offsetX - 5, player.y + 35);
+                ctx.lineTo(offsetX + 5, player.y + 40);
+                ctx.fill();
+            }
+
+            // Legs animation
+            ctx.fillStyle = '#228B22';
+            if (player.frame === 0 || player.frame === 2) {
+                ctx.fillRect(offsetX + 10, player.y + 40, 10, 10);
+                ctx.fillRect(offsetX + 20, player.y + 35, 10, 10);
+            } else if (player.frame === 1 || player.frame === 3) {
+                ctx.fillRect(offsetX + 10, player.y + 35, 10, 10);
+                ctx.fillRect(offsetX + 20, player.y + 40, 10, 10);
+            } else if (player.isJumping) {
+                ctx.fillRect(offsetX + 10, player.y + 38, 10, 10);
+                ctx.fillRect(offsetX + 20, player.y + 38, 10, 10);
+            }
+
+            // Arms animation
+            ctx.fillStyle = '#FFE4C4';
+            if (player.frame === 0 || player.frame === 2 || player.isJumping) {
+                ctx.fillRect(offsetX + 30, player.y + 25, 10, 5);
+                ctx.fillRect(offsetX, player.y + 30, 10, 5);
+            } else {
+                ctx.fillRect(offsetX + 30, player.y + 30, 10, 5);
+                ctx.fillRect(offsetX, player.y + 25, 10, 5);
+            }
+
+            ctx.restore();
+
+            // Draw coins (enhanced holographic orbs)
+            for (let coin of stages[currentStage].coins) {
+                if (!coin.collected) {
+                    ctx.save();
+                    ctx.translate(coin.x, coin.y);
+                    ctx.rotate(portalAnimationFrame / 20);
+                    ctx.fillStyle = '#00CED1'; // Cyan
+                    ctx.strokeStyle = '#FFFFFF'; // Neon white
+                    ctx.lineWidth = 1;
+                    // Main orb
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Concentric rings
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+                    ctx.stroke();
+                    // Radial lines
+                    for (let i = 0; i < 4; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(8 * Math.cos((i * Math.PI) / 2), 8 * Math.sin((i * Math.PI) / 2));
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+            }
+
+            // Draw coin particles
+            ctx.fillStyle = 'rgba(0, 206, 209, 0.7)';
+            for (let p of coinParticles) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw portal and lock
+            const portal = stages[currentStage].portal;
+            if (portal.active) {
+                // Generate portal particles
+                if (Math.random() < 0.2) {
+                    createPortalParticles(portal.x + 25, portal.y + 25);
+                }
+                // Pulsating glow
+                const glowRadius = 30 + Math.sin(portalAnimationFrame / 10) * 5;
+                const glowGradient = ctx.createRadialGradient(
+                    portal.x + 25, portal.y + 25, 0,
+                    portal.x + 25, portal.y + 25, glowRadius
+                );
+                glowGradient.addColorStop(0, 'rgba(128, 0, 128, 0.9)');
+                glowGradient.addColorStop(1, 'rgba(128, 0, 128, 0)');
+                ctx.fillStyle = glowGradient;
+                ctx.beginPath();
+                ctx.arc(portal.x + 25, portal.y + 25, glowRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Swirling portal effect
+                const swirlGradient = ctx.createRadialGradient(
+                    portal.x + 25, portal.y + 25, 0,
+                    portal.x + 25, portal.y + 25, 25
+                );
+                swirlGradient.addColorStop(0, '#800080');
+                swirlGradient.addColorStop(0.3, '#FFD700');
+                swirlGradient.addColorStop(1, '#4B0082');
+                ctx.fillStyle = swirlGradient;
+                ctx.save();
+                ctx.translate(portal.x + 25, portal.y + 25);
+                ctx.rotate(portalAnimationFrame / 20);
+                ctx.beginPath();
+                for (let i = 0; i < 12; i++) {
+                    const angle = (i / 12) * Math.PI * 2;
+                    ctx.lineTo(Math.cos(angle) * 25, Math.sin(angle) * 25);
+                    ctx.lineTo(Math.cos(angle + Math.PI / 12) * 15, Math.sin(angle + Math.PI / 12) * 15);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+
+                // Portal particles
+                ctx.fillStyle = 'rgba(255, 215, 0, 0.5)';
+                for (let p of portalParticles) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else {
+                // Inactive portal
+                ctx.fillStyle = '#4A4A4A';
+                ctx.fillRect(portal.x, portal.y, portal.width, portal.height);
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(portal.x, portal.y, portal.width, portal.height);
+
+                // Draw enhanced lock icon
+                const shakeOffset = Math.sin(portalAnimationFrame / 5) * 2;
+                const lockX = portal.x + 25 + shakeOffset;
+                const lockY = portal.y + 25;
+
+                // Lock body (rounded top, rectangular bottom)
+                const lockGradient = ctx.createLinearGradient(lockX - 15, lockY - 15, lockX + 15, lockY + 15);
+                lockGradient.addColorStop(0, '#D3D3D3');
+                lockGradient.addColorStop(1, '#808080');
+                ctx.fillStyle = lockGradient;
+                ctx.beginPath();
+                ctx.moveTo(lockX - 15, lockY + 5);
+                ctx.lineTo(lockX - 15, lockY - 5);
+                ctx.quadraticCurveTo(lockX - 15, lockY - 15, lockX - 5, lockY - 15);
+                ctx.lineTo(lockX + 5, lockY - 15);
+                ctx.quadraticCurveTo(lockX + 15, lockY - 15, lockX + 15, lockY - 5);
+                ctx.lineTo(lockX + 15, lockY + 5);
+                ctx.lineTo(lockX + 10, lockY + 15);
+                ctx.lineTo(lockX - 10, lockY + 15);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Shackle
+                ctx.beginPath();
+                ctx.moveTo(lockX - 5, lockY - 15);
+                ctx.lineTo(lockX - 5, lockY - 25);
+                ctx.quadraticCurveTo(lockX, lockY - 30, lockX + 5, lockY - 25);
+                ctx.lineTo(lockX + 5, lockY - 15);
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = lockGradient;
+                ctx.stroke();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Keyhole
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(lockX, lockY + 5, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(lockX, lockY + 5);
+                ctx.lineTo(lockX - 3, lockY + 10);
+                ctx.lineTo(lockX + 3, lockY + 10);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        // Game loop
+        function gameLoop() {
+            if (update()) {
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Start game
+        gameLoop();
+    </script>
+</body>
+</html>
